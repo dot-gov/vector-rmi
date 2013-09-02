@@ -20,9 +20,11 @@ void usage(WCHAR *argv) {
 	wprintf(L"\t\t\t(e.g.: http://www.google.com/file.txt)\n\n");
 	wprintf(L"\t-t <text>\tText to show in the message\n");
 	wprintf(L"\t\t\t(e.g.: \"This is a test\") (optional)\n\n");
+	wprintf(L"\t-T <file>\tGet message text from <file>\n\n");
 	wprintf(L"\t-s <service>\tService Type: \"sl\" (service loading) or\n");
 	wprintf(L"\t\t\t\"si\" (service indication)\n\n");
 	wprintf(L"\t\t\t\"sms\" (normal SMS)\n\n");
+	wprintf(L"\t-f\t\tFlash sms: use in conjuction with type sms\n\n");
 	wprintf(L"\t-r <priority>\tPriority: \"execute-[high, low] | cache\" for \"sl\" and\n");
 	wprintf(L"\t\t\t\"signal-[none, low, medium, high] | delete\" for \"si\"\n\n");
 	wprintf(L"\t-d <creation>\tCreation Date: needed for \"si\": \"YYYY-MM-DDTHH:MM:SS\"\n");
@@ -41,7 +43,7 @@ int wmain(int argc, WCHAR* argv[]) {
 	LPWSTR *ppwCommandLine = NULL;
 	PWCHAR pwPort, pwNumber, pwLink, pwText, pwPin, pwXml;
 	PWCHAR pwService, pwPriority, pwDate;
-	BOOL bXml = FALSE, bArg = FALSE, bQuery = FALSE, bCom = FALSE;
+	BOOL bXml = FALSE, bArg = FALSE, bQuery = FALSE, bCom = FALSE, bFlash = FALSE;
 	INT iRet = 4;
 
 	WapPush wapObj;
@@ -111,12 +113,50 @@ int wmain(int argc, WCHAR* argv[]) {
 
 				break;
 
+			case 'T':
+				//wprintf(L"[DEBUG] -T\n");
+				bArg = TRUE;
+
+				
+				if (i + 1 < iNumArgs) {
+					DWORD dwWritten = 0;
+					HANDLE hTextFile = CreateFile(ppwCommandLine[i + 1], GENERIC_READ, FILE_SHARE_READ|FILE_SHARE_WRITE, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+
+					if (hTextFile == INVALID_HANDLE_VALUE) {
+						wprintf(L"Cannot open file containing text message.\n");
+						return 1;
+					}
+
+					DWORD dwLen = GetFileSize(hTextFile, NULL);
+
+					if (dwLen < 2) {
+						wprintf(L"Cannot read file containing text message.\n");
+						return 1;
+					}
+
+					WCHAR *t = new WCHAR[dwLen / sizeof(WCHAR) + 1];
+					ZeroMemory(t, dwLen + sizeof(WCHAR));
+
+					ReadFile(hTextFile, t, dwLen, &dwWritten, NULL); 
+
+					pwText = t;
+
+					CloseHandle(hTextFile);
+				}
+
+				break;
+
 			case 's':
 				//wprintf(L"[DEBUG] -s\n");
 				bArg = TRUE;
 
 				if (i + 1 < iNumArgs)
 					pwService = ppwCommandLine[i + 1];
+
+				break;
+
+			case 'f':
+				bFlash = TRUE;
 
 				break;
 
@@ -212,7 +252,7 @@ int wmain(int argc, WCHAR* argv[]) {
 	}
 
 	// Start dealing with GSM modem
-	iRet = wapObj.SendMessage(pwPort, pwPin, pwNumber, pwText, pwService, pwPriority, pwLink, pwDate);
+	iRet = wapObj.SendMessage(pwPort, pwPin, pwNumber, pwText, pwService, pwPriority, pwLink, pwDate, bFlash);
 /*
 	if (wapObj.CheckModem() == FALSE) {
 		wprintf(L"[ERROR] Modem is not able to send WAP Push messages\n");

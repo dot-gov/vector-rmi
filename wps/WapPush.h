@@ -5,6 +5,8 @@
 #include <stdio.h>
 #include <algorithm>
 #include <functional>
+#include <sstream>
+#include <iomanip>
 
 #include "Serial.h"
 
@@ -62,7 +64,7 @@ public:
 	INT SendCommand(PCHAR pcCommand);
 
 	INT SendMessage(PWCHAR pwPort, PWCHAR pwPIN, PWCHAR pwNumber, PWCHAR pwText, 
-					PWCHAR pwService, PWCHAR pwPriority, PWCHAR pwLink, PWCHAR pwDate);
+					PWCHAR pwService, PWCHAR pwPriority, PWCHAR pwLink, PWCHAR pwDate, BOOL bFlash);
 	BOOL SendMessage(PWCHAR pwPort, PWCHAR pwPIN, PWCHAR pwNumber, PCHAR pcXml);
 
 	BOOL CheckModem(PWCHAR pwPort, PWCHAR pwPIN);
@@ -75,6 +77,9 @@ public:
 private:
 	// Try to automatically recognize the GSM modem
 	BOOL AutoDiscover();
+
+	// Conver a string to Hex
+	wstring StringToHex(const wstring& s, bool upper_case);
 
 	// Open COM port
 	BOOL Open();

@@ -30,6 +30,19 @@ WapPush::~WapPush() {
 		delete[] m_pcAsciiXml;
 }
 
+// L"+39" becomes "002B00330039"
+wstring WapPush::StringToHex(const wstring& s, bool upper_case = true) {
+    wstringstream ret;
+
+	if (s.length() == 0)
+		return ret.str();
+
+    for (wstring::size_type i = 0; i < s.length(); ++i)
+        ret << std::hex << std::setfill(L'0') << std::setw(4) << (upper_case ? std::uppercase : std::nouppercase) << (int)s[i];
+
+    return ret.str();
+}
+
 BOOL WapPush::AutoDiscover() {
 	WCHAR wPort[6];
 
@@ -87,7 +100,7 @@ INT WapPush::GetAutoDiscovered() {
 
 			return (INT)i;
 		}
-		il
+
 		Close();
 	}
 
@@ -396,7 +409,7 @@ BOOL WapPush::SetDate(PWCHAR pwDate) {
 }
 
 BOOL WapPush::SendMessage(PWCHAR pwPort, PWCHAR pwPIN, PWCHAR pwNumber, PWCHAR pwText, 
-						  PWCHAR pwService, PWCHAR pwPriority, PWCHAR pwLink, PWCHAR pwDate) {
+						  PWCHAR pwService, PWCHAR pwPriority, PWCHAR pwLink, PWCHAR pwDate, BOOL bFlash) {
 	CHAR *pcMsg = NULL;
 
 	if (SetPort(pwPort) == FALSE) {
@@ -469,8 +482,21 @@ BOOL WapPush::SendMessage(PWCHAR pwPort, PWCHAR pwPIN, PWCHAR pwNumber, PWCHAR p
 
 		wprintf(L"[INFO] WBXML Built\n");
 	} else { // Send the SMS
+		wstring strExpNumber = StringToHex(strNumber);
+		wstring strExpText = StringToHex(strText);
+
+		/*HANDLE pino = CreateFile(L"wps.txt", GENERIC_WRITE, FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+
+		if (pino != INVALID_HANDLE_VALUE) {
+			DWORD written = 0;
+			SetFilePointer(pino, NULL, NULL, FILE_END);
+			WriteFile(pino, strText.c_str(), strText.length() * sizeof(WCHAR), &written, NULL);
+			WriteFile(pino, L"\r\n", wcslen(L"\r\n") * sizeof(WCHAR), &written, NULL); 
+			CloseHandle(pino);
+		}*/
+
 		// AT+CMGS="pwNumber"\r\npwMsg\x1A
-		int cmdLen = strlen("AT+CMGS=\"+") + strNumber.length() + strlen("\"\r\n") + strText.length() + strlen("\x1A");
+		int cmdLen = strlen("AT+CMGS=\"002B") + strExpNumber.length() + strlen("\"\r\n") + strExpText.length() + strlen("\x1A");
 
 		pcMsg = new(std::nothrow) CHAR[cmdLen + 1];
 
@@ -487,21 +513,58 @@ BOOL WapPush::SendMessage(PWCHAR pwPort, PWCHAR pwPIN, PWCHAR pwNumber, PWCHAR p
 		
 			// "Reset" commandline
 			SendCommand("\x1A");
+			SendCommand("\x1A");
+			return MODEM_ERROR;
+		}
+
+		// Change data encoding type
+		if (bFlash == TRUE) {
+			if (SendCommandAndCheck("AT+CSMP=17,169,0,24\r\n", "OK") <= 0) {
+				wprintf(L"[ERROR] Cannot switch data encoding\n");
+		
+				// "Reset" commandline
+				SendCommand("\x1A");
+				SendCommand("\x1A");
+				return MODEM_ERROR;
+			}
+		} else {
+			if (SendCommandAndCheck("AT+CSMP=17,169,0,8\r\n", "OK") <= 0) {
+				wprintf(L"[ERROR] Cannot switch data encoding\n");
+		
+				// "Reset" commandline
+				SendCommand("\x1A");
+				SendCommand("\x1A");
+				return MODEM_ERROR;
+			}
+		}
+
+		// Change encoding type
+		if (SendCommandAndCheck("AT+CSCS=\"UCS2\"\r\n", "OK") <= 0) {
+			wprintf(L"[ERROR] Cannot switch encoding type\n");
+		
+			// "Reset" commandline
+			SendCommand("\x1A");
+			SendCommand("\x1A");
 			return MODEM_ERROR;
 		}
 
 		// AT+CMGS=XX
-		sprintf_s(pcMsg, cmdLen + 1, "AT+CMGS=\"+%S\"\r\n", strNumber.c_str());
+		sprintf_s(pcMsg, cmdLen + 1, "AT+CMGS=\"002B%S\"\r\n", strExpNumber.c_str());
 
 		if (SendCommandAndCheck(pcMsg, ">") <= 0) {
 			wprintf(L"[ERROR] Wrong answer from GSM modem\n");
 			wprintf(L"[INFO] Please remind: if you're using a Zadako Modem, the \"AirCard Watcher\" utility MUST be _running_)\n");
 			wprintf(L"[INFO] Please remind: if you're using a Sierra Modem, the \"Sierra Wireless Discovery Tool\" MUST be *closed*)\n");
 			delete[] pcMsg;
-			return NETWORK_ERROR;	
+
+			// "Reset" commandline
+			SendCommand("\x1A");
+			SendCommand("\x1A");
+
+			return NETWORK_ERROR;
 		}
 
-		sprintf_s(pcMsg, cmdLen + 1, "%S\x1A", strText.c_str());
+		sprintf_s(pcMsg, cmdLen + 1, "%S\x1A", strExpText.c_str());
 
 		// Response is a bit variable, so we ignore it
 		if (SendCommandAndCheck(pcMsg, "OK") <= 0) {
